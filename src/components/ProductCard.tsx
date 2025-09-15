@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Product } from '@/types/product';
 import { useCart } from '@/contexts/CartContext';
@@ -11,9 +11,13 @@ interface ProductCardProps {
 
 const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const { addToCart } = useCart();
+  const [showToast, setShowToast] = useState(false);
 
   const handleAddToCart = () => {
     addToCart(product);
+    setShowToast(true);
+    // Hide toast after 2 seconds
+    setTimeout(() => setShowToast(false), 2000);
   };
 
   const renderStars = (rating: number) => {
@@ -104,6 +108,15 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           {product.inStock ? 'Add to Cart' : 'Out of Stock'}
         </button>
       </div>
+
+      {showToast && (
+        <div
+          aria-live="polite"
+          className="fixed bottom-4 right-4 z-50 bg-green-600 text-white px-4 py-2 rounded shadow-lg text-sm"
+        >
+          Added to cart successfully
+        </div>
+      )}
     </div>
   );
 };
