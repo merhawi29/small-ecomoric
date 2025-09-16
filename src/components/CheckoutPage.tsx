@@ -17,13 +17,96 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
     houseNumber: '',
     paymentMethod: ''
   });
+  const [errors, setErrors] = useState({
+    fullName: '',
+    phone: '',
+    address: '',
+    houseNumber: '',
+    paymentMethod: ''
+  });
   const [showDigitalWallets, setShowDigitalWallets] = useState(false);
   const [showBranchPayments, setShowBranchPayments] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const normalizeKey = (text: string) =>
     (text || '')
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '');
+
+  // Generate unique transaction reference
+  const generateTxRef = () => {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    return `order-${timestamp}-${random}`;
+  };
+
+  // Process payment with backend API
+  const processPayment = async () => {
+    if (formData.paymentMethod === 'cash') {
+      // Handle cash on delivery
+      handleCashOrder();
+      return;
+    }
+
+    if (formData.paymentMethod === 'chapa') {
+      // Handle Chapa payment
+      await handleChapaPayment();
+      return;
+    }
+
+    // For other payment methods, show message
+    alert('This payment method is not yet implemented. Please use Cash on Delivery or Chapa.');
+  };
+
+  const handleCashOrder = () => {
+    // For cash orders, just show success and clear cart
+    alert('Order placed successfully! You will pay when the order arrives.');
+    clearCart();
+    onBack();
+  };
+
+  const handleChapaPayment = async () => {
+    setIsProcessing(true);
+    
+    try {
+      const txRef = generateTxRef();
+      const paymentData = {
+        amount: getTotalPrice(),
+        currency: 'ETB',
+        tx_ref: txRef,
+        provider: 'chapa',
+        customer_email: formData.phone + '@example.com', // Using phone as email fallback
+        customer_name: formData.fullName
+      };
+
+      // Send to your backend API
+      const response = await fetch('https://your-backend-domain.com/api/payments/initialize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(paymentData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Payment initialization failed');
+      }
+
+      const result = await response.json();
+      
+      if (result.checkoutUrl) {
+        // Redirect to Chapa checkout
+        window.location.href = result.checkoutUrl;
+      } else {
+        throw new Error('No checkout URL received');
+      }
+    } catch (error) {
+      console.error('Payment error:', error);
+      alert('Payment initialization failed. Please try again or use Cash on Delivery.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const getWalletIcon = (nameOrValue: string) => {
     const key = normalizeKey(nameOrValue);
@@ -53,12 +136,37 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
+    const { name } = e.target;
+    let { value } = e.target as HTMLInputElement;
+
+    // Sanitize phone: digits only, max 10
+    if (name === 'phone') {
+      value = value.replace(/\D/g, '').slice(0, 10);
+    }
+
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
-    
+
+    // Inline validation
+    setErrors(prev => {
+      const next = { ...prev } as typeof prev;
+      if (name === 'fullName') next.fullName = value.trim() ? '' : 'Full name is required';
+      if (name === 'phone') {
+        // Show error only when user has entered 10 digits and it is invalid
+        if (value.length === 10) {
+          next.phone = /^[79][0-9]{9}$/.test(value) ? '' : 'Enter 10 digits starting with 9 or 7';
+        } else {
+          next.phone = '';
+        }
+      }
+      if (name === 'address') next.address = value.trim() ? '' : 'Address is required';
+      if (name === 'houseNumber') next.houseNumber = value.trim() ? '' : 'House number is required';
+      if (name === 'paymentMethod') next.paymentMethod = value ? '' : 'Select a payment method';
+      return next;
+    });
+
     // Close dropdowns when a payment method is selected
     if (name === 'paymentMethod') {
       if (['tele-birr', 'cbe-birr', 'm-pesa', 'hello-cash', 'amole', 'kacha',].includes(value)) {
@@ -71,18 +179,20 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
   };
 
   const handlePlaceOrder = () => {
-    if (!formData.paymentMethod) {
-      alert('Please select a payment method.');
-      return;
-    }
-    if (!formData.fullName || !formData.phone || !formData.address) {
-      alert('Please fill in all required fields.');
-      return;
-    }
-    // Here you would typically send the order to your backend
-    alert('Order placed successfully! Thank you for your purchase.');
-    clearCart();
-    onBack();
+    const newErrors = {
+      fullName: formData.fullName.trim() ? '' : 'Full name is required',
+      phone: /^[79][0-9]{9}$/.test(formData.phone) ? '' : 'Enter 10 digits starting with 9 or 7',
+      address: formData.address.trim() ? '' : 'Address is required',
+      houseNumber: formData.houseNumber.trim() ? '' : 'House number is required',
+      paymentMethod: formData.paymentMethod ? '' : 'Select a payment method'
+    };
+    setErrors(newErrors);
+
+    const hasError = Object.values(newErrors).some(Boolean);
+    if (hasError) return;
+
+    // Process payment based on selected method
+    processPayment();
   };
 
   return (
@@ -117,9 +227,12 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
                     name="fullName"
                     value={formData.fullName}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                    className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 ${errors.fullName ? 'border-2 border-red-500' : 'border border-gray-300'}`}
                     placeholder="Enter your full name"
                   />
+                  {errors.fullName && (
+                    <p className="mt-1 text-sm text-red-600">{errors.fullName}</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -134,9 +247,15 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
                       name="phone"
                       value={formData.phone}
                       onChange={handleInputChange}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                      pattern="[79][0-9]{9}"
+                      maxLength={10}
+                      inputMode="numeric"
+                      className={`flex-1 px-3 py-2 rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 ${errors.phone ? 'border-2 border-red-500' : 'border border-gray-300'}`}
                       placeholder="Phone number"
                     />
+                  {errors.phone && (
+                    <p className="mt-1 text-sm text-red-600">{errors.phone}</p>
+                  )}
                   </div>
                 </div>
               </div>
@@ -155,9 +274,12 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
                     name="address"
                     value={formData.address}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                    className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 ${errors.address ? 'border-2 border-red-500' : 'border border-gray-300'}`}
                     placeholder="Enter your address (e.g., street name)"
                   />
+                  {errors.address && (
+                    <p className="mt-1 text-sm text-red-600">{errors.address}</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -168,9 +290,12 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
                     name="houseNumber"
                     value={formData.houseNumber}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                    className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 ${errors.houseNumber ? 'border-2 border-red-500' : 'border border-gray-300'}`}
                     placeholder="House number"
                   />
+                  {errors.houseNumber && (
+                    <p className="mt-1 text-sm text-red-600">{errors.houseNumber}</p>
+                  )}
                 </div>
                 {/* Map placeholder */}
                 <div className="bg-gray-100 rounded-lg p-4 text-center">
@@ -220,7 +345,7 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
                   />
                   <div className="flex items-center flex-1">
                     <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center mr-4 shadow-sm">
-                      <Image src="/image/cash-on-delivery.png" alt="Cash-on Delivery" width={32} height={32} className="object-contain rounded" />
+                      <Image src="/image/cash-on-delivery.png" alt="Cash-on Delivery" width={40} height={40} className="object-contain rounded" />
                     </div>
                     <div>
                       <div className="font-semibold text-lg" style={{ color: '#0F172A' }}>Cash-on Delivery</div>
@@ -229,8 +354,49 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
                   </div>
                 </label>
 
+                {/* Chapa Payment */}
+                <label className={`group flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 ${
+                  formData.paymentMethod === 'chapa'
+                    ? 'border-blue-500 bg-blue-50 shadow-md'
+                    : 'border-gray-200 hover:border-blue-300 hover:bg-blue-25 hover:shadow-sm'
+                }`} style={{
+                  backgroundColor: formData.paymentMethod === 'chapa' ? '#F0F7FF' : '#FFFFFF',
+                  borderColor: formData.paymentMethod === 'chapa' ? '#2563EB' : '#E5E7EB'
+                }}
+                onMouseEnter={(e) => {
+                  if (formData.paymentMethod !== 'chapa') {
+                    e.currentTarget.style.backgroundColor = '#F0F7FF';
+                    e.currentTarget.style.borderColor = '#93C5FD';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (formData.paymentMethod !== 'chapa') {
+                    e.currentTarget.style.backgroundColor = '#FFFFFF';
+                    e.currentTarget.style.borderColor = '#E5E7EB';
+                  }
+                }}
+                >
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="chapa"
+                    checked={formData.paymentMethod === 'chapa'}
+                    onChange={handleInputChange}
+                    className="mr-4 w-4 h-4 text-blue-600"
+                  />
+                  <div className="flex items-center flex-1">
+                    <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-600 rounded-full flex items-center justify-center mr-4 shadow-sm">
+                      <Image src="/image/chapa.jpeg" alt="Chapa" width={40} height={40} className="object-contain rounded" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-lg" style={{ color: '#0F172A' }}>Chapa Payment</div>
+                      <div className="text-sm" style={{ color: '#64748B' }}>Pay securely with Chapa</div>
+                    </div>
+                  </div>
+                </label>
+
                 {/* Digital Wallet */}
-                <div className={`border-2 rounded-xl overflow-hidden transition-all duration-200 ${
+                {/* <div className={`border-2 rounded-xl overflow-hidden transition-all duration-200 ${
                   showDigitalWallets ? 'border-blue-400 shadow-md' : 'border-gray-200 hover:border-blue-300'
                 }`} style={{
                   backgroundColor: ['tele-birr', 'cbe-birr', 'm-pesa', 'hello-cash', 'amole', 'kacha'].includes(formData.paymentMethod) ? '#F0F7FF' : '#FFFFFF',
@@ -505,10 +671,10 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
                       
                     </div>
                   )}
-                </div>
+                </div> */}
 
                 {/* Branch Payment */}
-                <div className={`border-2 rounded-xl overflow-hidden transition-all duration-200 ${
+                {/* <div className={`border-2 rounded-xl overflow-hidden transition-all duration-200 ${
                   showBranchPayments ? 'border-blue-400 shadow-md' : 'border-gray-200 hover:border-blue-300'
                 }`} style={{
                   backgroundColor: ['cbe', 'awash', 'abyssinia', 'dashen', 'nib', 'wegagen', 'zemen', 'bunna', 'coop'].includes(formData.paymentMethod) ? '#F0F7FF' : '#FFFFFF',
@@ -895,7 +1061,7 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
                       </label>
                     </div>
                   )}
-                </div>
+                </div> */}
               </div>
             </div>
           </div>
@@ -939,9 +1105,21 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
 
               <button
                 onClick={handlePlaceOrder}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-semibold transition-colors duration-200 mt-6"
+                disabled={isProcessing}
+                className={`w-full py-3 px-4 rounded-lg font-semibold transition-colors duration-200 mt-6 ${
+                  isProcessing 
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
               >
-                Place Order
+                {isProcessing ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    Processing...
+                  </div>
+                ) : (
+                  'Place Order'
+                )}
               </button>
             </div>
           </div>
