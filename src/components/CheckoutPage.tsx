@@ -75,12 +75,13 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
         currency: 'ETB',
         tx_ref: txRef,
         provider: 'chapa',
-        customer_email: formData.phone + '@example.com', // Using phone as email fallback
-        customer_name: formData.fullName
+        customer_email: formData.phone + '@gmail.com', // Using phone as email fallback
+        customer_name: formData.fullName,
+        return_url: "http://localhost:3000/payment/success",
       };
-
+//https://memi-payment.onrender.com/api/payments/initialize
       // Send to your backend API
-      const response = await fetch('https://your-backend-domain.com/api/payments/initialize', {
+      const response = await fetch(`/api/proxy?url=${encodeURIComponent("https://memi-payment.onrender.com/api/payments/initialize")}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

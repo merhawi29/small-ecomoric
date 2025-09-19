@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CartProvider } from '@/contexts/CartContext';
 import ProductCard from '@/components/ProductCard';
 import Cart from '@/components/Cart';
 import TopHeader from '@/components/TopHeader';
@@ -21,16 +20,16 @@ export default function Home() {
 
   if (showCheckout) {
     return (
-      <CartProvider>
+      <>
         <TopHeader />
         <Navbar onCheckout={() => setShowCheckout(true)} />
         <CheckoutPage onBack={() => setShowCheckout(false)} />
-      </CartProvider>
+      </>
     );
   }
 
   return (
-    <CartProvider>
+    <>
       <TopHeader />
       <Navbar onCheckout={() => setShowCheckout(true)} />
       <div className="min-h-screen bg-gray-50">
@@ -87,6 +86,6 @@ export default function Home() {
 
         {/* Footer removed: using global Footer component in layout */}
     </div>
-    </CartProvider>
+    </>
   );
 }
